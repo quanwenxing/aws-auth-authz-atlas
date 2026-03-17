@@ -1,0 +1,9 @@
+{
+  "id": "20260318-0725_aws-auth-guide-site",
+  "title": "AWS認証・認可ガイドサイト作成",
+  "requested_by": "もんちゃん",
+  "created_at": "2026-03-18T07:25:00+09:00",
+  "updated_at": "2026-03-18T07:29:00+09:00",
+  "status": "in_progress",
+  "tags": ["aws", "iam", "cognito", "oauth", "oidc", "saml", "github-pages", "html"]
+}

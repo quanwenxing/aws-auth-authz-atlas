@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AWS認証・認可の全体像ガイド</title>
+  <meta name="description" content="AWS上の認証認可を、IAM / IAM Identity Center / Cognito / OAuth 2.0 / OpenID Connect / SAML / Federation / STS までまとめて理解できる実務向け入門ガイド" />
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: oklch(0.98 0.01 95);
+      --panel: oklch(0.995 0.004 95);
+      --ink: oklch(0.25 0.03 250);
+      --muted: oklch(0.53 0.03 250);
+      --line: oklch(0.89 0.02 90);
+      --accent: oklch(0.58 0.17 40);
+      --accent-2: oklch(0.66 0.12 210);
+      --accent-soft: color-mix(in oklab, var(--accent) 10%, white);
+      --shadow: 0 18px 60px color-mix(in oklab, var(--ink) 8%, transparent);
+      --radius: 24px;
+      --max: 1200px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+      background:
+        radial-gradient(circle at top left, color-mix(in oklab, var(--accent) 16%, transparent) 0, transparent 28%),
+        radial-gradient(circle at 85% 10%, color-mix(in oklab, var(--accent-2) 20%, transparent) 0, transparent 24%),
+        linear-gradient(180deg, oklch(0.97 0.015 90), var(--bg));
+      color: var(--ink);
+      line-height: 1.7;
+    }
+
+    a { color: inherit; }
+    .wrap { width: min(calc(100% - 32px), var(--max)); margin: 0 auto; }
+
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      backdrop-filter: blur(14px);
+      background: color-mix(in oklab, white 74%, transparent);
+      border-bottom: 1px solid color-mix(in oklab, var(--line) 80%, white);
+    }
+    .topbar-inner {
+      display: flex; gap: 16px; align-items: center; justify-content: space-between;
+      padding: 12px 0;
+    }
+    .brand { font-weight: 800; letter-spacing: .03em; }
+    .brand small { display: block; color: var(--muted); font-weight: 600; font-size: 12px; }
+    .nav { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .nav a {
+      text-decoration: none; padding: 8px 12px; border-radius: 999px; font-size: 14px;
+      background: color-mix(in oklab, white 72%, var(--accent-soft)); border: 1px solid var(--line);
+    }
+
+    header.hero { padding: 56px 0 28px; }
+    .eyebrow {
+      display: inline-flex; gap: 8px; align-items: center; padding: 8px 12px;
+      border: 1px solid color-mix(in oklab, var(--accent) 22%, var(--line));
+      border-radius: 999px; font-size: 13px; font-weight: 700;
+      background: color-mix(in oklab, var(--accent) 10%, white);
+    }
+    h1 {
+      margin: 18px 0 14px; font-size: clamp(34px, 6vw, 72px); line-height: .98;
+      letter-spacing: -.04em; max-width: 11ch;
+    }
+    .lead {
+      max-width: 72ch; color: var(--muted); font-size: clamp(17px, 2vw, 21px);
+    }
+    .hero-grid {
+      display: grid; grid-template-columns: 1.3fr .9fr; gap: 24px; align-items: start; margin-top: 30px;
+    }
+    .panel {
+      background: color-mix(in oklab, white 88%, var(--accent-soft));
+      border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+    }
+    .hero-card { padding: 22px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; margin-top: 16px; }
+    .stat {
+      padding: 16px; border-radius: 20px; background: color-mix(in oklab, white 82%, var(--accent-soft));
+      border: 1px solid color-mix(in oklab, var(--line) 82%, white);
+    }
+    .stat strong { display: block; font-size: 28px; line-height: 1; margin-bottom: 8px; }
+
+    main { padding-bottom: 72px; }
+    section { padding: 28px 0; }
+    .section-head { display: grid; grid-template-columns: .8fr 1.2fr; gap: 24px; margin-bottom: 18px; }
+    h2 {
+      font-size: clamp(28px, 4vw, 44px); line-height: 1.02; letter-spacing: -.03em; margin: 0;
+    }
+    h3 { font-size: 24px; margin: 0 0 8px; letter-spacing: -.02em; }
+    .section-kicker { color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: .1em; font-size: 12px; }
+    .section-copy { color: var(--muted); }
+
+    .cards { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+    .card { grid-column: span 4; padding: 22px; }
+    .card.wide { grid-column: span 6; }
+    .card.full { grid-column: 1 / -1; }
+    .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+    .card ul { padding-left: 1.1em; }
+
+    .map {
+      padding: 24px; display: grid; gap: 18px;
+      background: linear-gradient(180deg, color-mix(in oklab, white 84%, var(--accent-soft)), white);
+    }
+    .flow-row {
+      display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch;
+    }
+    .node {
+      position: relative; padding: 18px; border-radius: 22px; border: 1px solid var(--line);
+      background: color-mix(in oklab, white 85%, var(--accent-soft));
+      min-height: 130px;
+    }
+    .node small, .chipline { color: var(--muted); }
+    .node strong { display: block; margin-bottom: 8px; font-size: 18px; }
+    .arrow { display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--accent); }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 10px; border-radius: 999px; border: 1px solid var(--line);
+      background: white; font-size: 13px; font-weight: 700;
+    }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 760px; }
+    th, td { text-align: left; padding: 14px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+
+    .pill {
+      display: inline-block; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 800;
+      background: color-mix(in oklab, var(--accent) 12%, white); border: 1px solid color-mix(in oklab, var(--accent) 22%, var(--line));
+    }
+
+    .timeline { display: grid; gap: 12px; }
+    .step {
+      display: grid; grid-template-columns: 52px 1fr; gap: 14px; align-items: start;
+      padding: 14px 0; border-bottom: 1px dashed var(--line);
+    }
+    .step:last-child { border-bottom: none; }
+    .num {
+      width: 40px; height: 40px; display: grid; place-items: center; border-radius: 14px;
+      background: color-mix(in oklab, var(--accent) 14%, white); font-weight: 900;
+    }
+
+    footer { padding: 20px 0 80px; color: var(--muted); }
+    .refs li { margin-bottom: 10px; }
+
+    @media (max-width: 920px) {
+      .hero-grid, .section-head, .flow-row { grid-template-columns: 1fr; }
+      .card, .card.wide { grid-column: 1 / -1; }
+      .arrow { transform: rotate(90deg); }
+      .nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="wrap topbar-inner">
+      <div class="brand">AWS Auth / AuthZ Atlas<small>認証・認可の地図を一枚で掴む</small></div>
+      <nav class="nav">
+        <a href="#overview">全体像</a>
+        <a href="#basics">基礎</a>
+        <a href="#aws-services">AWSサービス</a>
+        <a href="#patterns">実務パターン</a>
+        <a href="#terms">用語集</a>
+        <a href="#refs">出典</a>
+      </nav>
+    </div>
+  </div>
+
+  <header class="hero wrap">
+    <span class="eyebrow">初心者向け / 実務向け / AWS中心</span>
+    <h1>AWS上の認証・認可を、迷子にならずに理解する。</h1>
+    <p class="lead">
+      IAM、IAM Identity Center、Cognito、OAuth 2.0、OpenID Connect、SAML、フェデレーション、STS まで。
+      「誰なのかを確かめる話」と「何をしてよいかを決める話」を分けて、AWSでどう組み合わせるかを網羅的に整理した資料です。
+    </p>
+
+    <div class="hero-grid">
+      <div class="panel hero-card">
+        <h3>まず一言でいうと</h3>
+        <p><strong>認証（Authentication）</strong>は「あなたは誰？」、<strong>認可（Authorization）</strong>は「何をしていい？」。</p>
+        <p>AWS実務では、この2つを分離して考えると一気に理解しやすくなる。たとえば、Googleでログインするのは認証、その後にS3を読めるか・Lambdaを実行できるかを決めるのは認可。</p>
+        <div class="chips">
+          <span class="chip">認証 = Identity</span>
+          <span class="chip">認可 = Permission</span>
+          <span class="chip">AWSでは STS が橋渡し</span>
+          <span class="chip">Webアプリでは OAuth/OIDC が重要</span>
+        </div>
+      </div>
+      <div class="panel hero-card">
+        <div class="stat-grid">
+          <div class="stat"><strong>IAM</strong>AWS内部の権限制御の中核</div>
+          <div class="stat"><strong>Identity Center</strong>社員向けSSOの本命</div>
+          <div class="stat"><strong>Cognito</strong>顧客向けログイン基盤</div>
+          <div class="stat"><strong>STS</strong>一時クレデンシャル発行役</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="overview">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Overview</div>
+          <h2>全体像はこの4層で見る。</h2>
+        </div>
+        <div class="section-copy">
+          AWSの認証認可は、単一サービスで全部やるより、役割分担で理解すると整理しやすい。
+          「IdPで本人確認 → AWSが一時権限を払い出す → IAMで許可判定 → アプリ/APIが受け入れる」の流れが基本。
+        </div>
+      </div>
+
+      <div class="panel map">
+        <div class="flow-row">
+          <div class="node">
+            <small>Layer 1</small>
+            <strong>Identity Provider</strong>
+            Google / Microsoft Entra ID / Okta / IAM Identity Center / Cognito User Pool
+          </div>
+          <div class="arrow">→</div>
+          <div class="node">
+            <small>Layer 2</small>
+            <strong>Token / Federation</strong>
+            OAuth 2.0 / OIDC / SAML / JWT / Federation
+          </div>
+          <div class="arrow">→</div>
+        </div>
+        <div class="flow-row">
+          <div class="node">
+            <small>Layer 3</small>
+            <strong>AWS Credential Bridge</strong>
+            STS / AssumeRole / AssumeRoleWithSAML / AssumeRoleWithWebIdentity
+          </div>
+          <div class="arrow">→</div>
+          <div class="node">
+            <small>Layer 4</small>
+            <strong>AWS Authorization</strong>
+            IAM Policy / Resource Policy / SCP / Permission Boundary / ABAC
+          </div>
+          <div class="arrow">→</div>
+        </div>
+        <div class="flow-row">
+          <div class="node" style="grid-column: 1 / -1; min-height: auto;">
+            <strong>見るべき問い</strong>
+            <div class="chips">
+              <span class="chip">どこで本人確認する？</span>
+              <span class="chip">どのトークンを使う？</span>
+              <span class="chip">AWS資格情報は誰が出す？</span>
+              <span class="chip">権限はIAMのどこで絞る？</span>
+              <span class="chip">人向けか、顧客向けか、機械向けか？</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="basics">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Basics</div>
+          <h2>基礎知識：まずは言葉を混ぜない。</h2>
+        </div>
+        <div class="section-copy">
+          初学者が混乱しやすいのは、ログインの仕組み、トークン、AWS権限、SSOが全部ごちゃ混ぜになること。
+          ここでは似た言葉を分けて整理する。
+        </div>
+      </div>
+      <div class="cards">
+        <article class="panel card">
+          <h3>認証</h3>
+          <p>本人確認。ID/パスワード、MFA、Googleログイン、社員ディレクトリ連携など。</p>
+          <p class="chipline">例：Cognito User Pool、Entra ID、Okta、IAM Identity Center</p>
+        </article>
+        <article class="panel card">
+          <h3>認可</h3>
+          <p>認証後に、どこまで許可するか決めること。AWSではIAMポリシーが中心。</p>
+          <p class="chipline">例：S3 readのみ、DynamoDB write不可、特定アカウントのみ入室可</p>
+        </article>
+        <article class="panel card">
+          <h3>SSO</h3>
+          <p>一度ログインすると複数アプリに再ログインなしで入れる体験。仕組みそのものではなく、体験の名前。</p>
+          <p class="chipline">裏側では OIDC / SAML / Cookie / Session などを使う</p>
+        </article>
+        <article class="panel card wide">
+          <h3>OAuth 2.0</h3>
+          <p>第三者アプリが、ユーザーの代わりに限定されたアクセスを得るための認可フレームワーク。重要なのは「<strong>OAuth自体はログイン規格ではない</strong>」こと。</p>
+          <ul>
+            <li>Access Token を発行して API にアクセスさせる</li>
+            <li>Authorization Code + PKCE が現代Web/SPA/モバイルの基本</li>
+            <li>Client Credentials はサーバー間通信向け</li>
+          </ul>
+        </article>
+        <article class="panel card wide">
+          <h3>OpenID Connect (OIDC)</h3>
+          <p>OAuth 2.0 の上に載る「認証」のレイヤー。ユーザーが誰かを示す <strong>ID Token</strong> を定義する。</p>
+          <ul>
+            <li>OAuth = APIアクセスの許可</li>
+            <li>OIDC = ユーザーの身元確認 + プロフィール情報の受け渡し</li>
+            <li>多くの「Googleでログイン」は OIDC ベース</li>
+          </ul>
+        </article>
+        <article class="panel card">
+          <h3>SAML 2.0</h3>
+          <p>企業SSOでよく使われてきたXMLベースのフェデレーション標準。古参だが今も社内SSOで強い。</p>
+        </article>
+        <article class="panel card">
+          <h3>JWT</h3>
+          <p>トークンの表現形式。OIDCのID TokenやOAuthのAccess Tokenで使われることが多いが、JWTそのものは規格名ではなくフォーマット。</p>
+        </article>
+        <article class="panel card">
+          <h3>フェデレーション</h3>
+          <p>外部の認証基盤を信頼して、自分のシステムに入れること。AWSでは「外部IdPを信じて一時権限を出す」が本質。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">OAuth / OIDC</div>
+          <h2>OAuth 2.0 と OIDC の仕組みを一度で掴む。</h2>
+        </div>
+        <div class="section-copy">
+          「Access Token」「Refresh Token」「ID Token」「Authorization Server」が並ぶと一気に難しく見えるけど、やっていることはシンプル。
+        </div>
+      </div>
+      <div class="cards">
+        <article class="panel card full">
+          <div class="timeline">
+            <div class="step"><div class="num">1</div><div><strong>ユーザーがログイン画面へ移動</strong><br>アプリは認証サーバーへリダイレクトする。ここでユーザーがGoogleやCognitoにログイン。</div></div>
+            <div class="step"><div class="num">2</div><div><strong>認証サーバーが許可を確認</strong><br>「このアプリにこの範囲のアクセスを許可していい？」を確認。OAuth的には consent。</div></div>
+            <div class="step"><div class="num">3</div><div><strong>認可コードを返す</strong><br>Authorization Code Flow では、いきなりトークンではなく短命の code を返す。</div></div>
+            <div class="step"><div class="num">4</div><div><strong>アプリがトークン交換</strong><br>バックエンドまたはPKCE付きクライアントが code を token endpoint に送り、Access Token / ID Token / Refresh Token を受け取る。</div></div>
+            <div class="step"><div class="num">5</div><div><strong>APIアクセス or ユーザー識別</strong><br>Access Token は API用、ID Token は「誰がログインしたか」確認用。Refresh Token は再ログインなし更新用。</div></div>
+          </div>
+        </article>
+        <article class="panel card wide">
+          <h3>トークンの役割</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>トークン</th><th>役割</th><th>使う相手</th><th>注意</th></tr></thead>
+              <tbody>
+                <tr><td><span class="pill">Access Token</span></td><td>API利用の権限を示す</td><td>Resource Server / API</td><td>クライアントで中身を決め打ちしない</td></tr>
+                <tr><td><span class="pill">ID Token</span></td><td>ログインしたユーザー情報を示す</td><td>Client / App</td><td>API認可の代用にしない</td></tr>
+                <tr><td><span class="pill">Refresh Token</span></td><td>新しいトークンを再取得</td><td>Authorization Server</td><td>漏えい時の影響が大きいので厳格保管</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel card">
+          <h3>PKCE</h3>
+          <p>SPAやモバイルで Authorization Code Flow を安全に使うための補強。今は「使うのが普通」と考えてよい。</p>
+        </article>
+        <article class="panel card">
+          <h3>Scopes / Claims</h3>
+          <p><strong>Scope</strong> は欲しい権限の範囲、<strong>Claim</strong> はユーザー属性。OIDCでは <code>openid profile email</code> などが代表例。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="aws-services">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">AWS Services</div>
+          <h2>AWSの主要サービスを役割で理解する。</h2>
+        </div>
+        <div class="section-copy">
+          名前が似ていても、対象ユーザーが違う。<strong>社員向け</strong>なのか、<strong>顧客向け</strong>なのか、<strong>機械向け</strong>なのかで選び分ける。
+        </div>
+      </div>
+
+      <div class="cards">
+        <article class="panel card wide">
+          <h3>IAM</h3>
+          <p>AWSリソースに対する認可の中核。ユーザー、ロール、ポリシー、リソースポリシーなどで「何ができるか」を決める。</p>
+          <ul>
+            <li><strong>User</strong>: 長期認証情報を持つ人/アプリ用主体。ただし現代実務では多用しない</li>
+            <li><strong>Role</strong>: 一時的に引き受ける権限の箱。人にも機械にも使う。実務の主役</li>
+            <li><strong>Policy</strong>: JSONで許可/拒否を書く</li>
+            <li><strong>Resource-based Policy</strong>: S3 bucket policy, Lambda permission など</li>
+          </ul>
+        </article>
+        <article class="panel card">
+          <h3>STS</h3>
+          <p>Security Token Service。一時的なAWS認証情報を発行する。外部IdPとAWS権限をつなぐ橋。</p>
+          <p class="chipline">AssumeRole / AssumeRoleWithSAML / AssumeRoleWithWebIdentity</p>
+        </article>
+        <article class="panel card wide">
+          <h3>IAM Identity Center（旧 AWS SSO）</h3>
+          <p>社員・社内委託先など <strong>workforce identity</strong> 向けのSSO基盤。複数AWSアカウントやAWSアプリへのアクセスを一元管理する。</p>
+          <ul>
+            <li>旧称 AWS Single Sign-On</li>
+            <li>外部IdP（Entra ID / Okta等）や社内ディレクトリ連携ができる</li>
+            <li>AWS Organizations と組み合わせて複数アカウント権限を集中管理しやすい</li>
+          </ul>
+        </article>
+        <article class="panel card wide">
+          <h3>Amazon Cognito</h3>
+          <p>顧客向け（B2C / CIAM寄り）のログイン基盤。Webやモバイルアプリのサインアップ/サインインに使う。</p>
+          <ul>
+            <li><strong>User Pools</strong>: ユーザーディレクトリ + 認証サーバー。OIDC / OAuth 2.0 の発行者になれる</li>
+            <li><strong>Identity Pools</strong>: 外部で認証済みのユーザーに、AWS一時クレデンシャルを払い出す</li>
+            <li>Google / Apple / Facebook / SAML / OIDC などと連携可能</li>
+          </ul>
+        </article>
+        <article class="panel card">
+          <h3>AWS Organizations / SCP</h3>
+          <p>各アカウントの上位ガードレール。SCP は「最大許可枠」を制限する。Identity Centerと相性がいい。</p>
+        </article>
+        <article class="panel card">
+          <h3>Permission Boundary</h3>
+          <p>IAM主体に付ける上限枠。委任管理やセルフサービス作成時の暴走防止に使う。</p>
+        </article>
+        <article class="panel card">
+          <h3>Session Policy</h3>
+          <p>AssumeRole 時に、さらにそのセッションだけ絞る追加制約。短期的な最小権限化に便利。</p>
+        </article>
+        <article class="panel card">
+          <h3>ABAC / RBAC</h3>
+          <p><strong>RBAC</strong> は役割ベース、<strong>ABAC</strong> は属性ベース。AWSではタグや属性を使ってABACを組むと大規模運用に強い。</p>
+        </article>
+        <article class="panel card">
+          <h3>AWS Directory Service</h3>
+          <p>Microsoft AD などのディレクトリ連携を扱う周辺サービス。社内認証基盤やWindows系統合と絡む場面で登場する。</p>
+        </article>
+        <article class="panel card">
+          <h3>IAM Roles Anywhere</h3>
+          <p>AWS外部のサーバーやオンプレ機器に、証明書ベースで一時AWS認証情報を配る仕組み。外部ワークロード向け。</p>
+        </article>
+        <article class="panel card">
+          <h3>Amazon Verified Permissions</h3>
+          <p>アプリ独自の細かい認可判定を外出ししたい時の選択肢。AWSリソース権限ではなく、アプリ内認可に向く。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Relationship Map</div>
+          <h2>似たサービスの関係性を整理する。</h2>
+        </div>
+        <div class="section-copy">ここを押さえると、「SSOはIdentity Center？ Cognito？ IAM？」の混乱がかなり減る。</div>
+      </div>
+      <div class="panel card full">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>サービス / 規格</th>
+                <th>主用途</th>
+                <th>主対象</th>
+                <th>AWSでの立ち位置</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>IAM</td>
+                <td>AWSリソースの認可</td>
+                <td>人/機械の両方</td>
+                <td>権限制御の本体</td>
+              </tr>
+              <tr>
+                <td>STS</td>
+                <td>一時認証情報の発行</td>
+                <td>人/機械の両方</td>
+                <td>外部認証とIAMをつなぐ橋</td>
+              </tr>
+              <tr>
+                <td>IAM Identity Center</td>
+                <td>社員向けSSO、複数AWSアカウントアクセス</td>
+                <td>workforce</td>
+                <td>社内アクセスの中核</td>
+              </tr>
+              <tr>
+                <td>Cognito User Pools</td>
+                <td>顧客ログイン、トークン発行</td>
+                <td>customers / app users</td>
+                <td>アプリの認証基盤</td>
+              </tr>
+              <tr>
+                <td>Cognito Identity Pools</td>
+                <td>AWS資格情報払い出し</td>
+                <td>app users</td>
+                <td>アプリからAWS直アクセスさせたい時の橋</td>
+              </tr>
+              <tr>
+                <td>OAuth 2.0</td>
+                <td>API利用の認可</td>
+                <td>クライアント/アプリ</td>
+                <td>Cognitoや外部IdPが採用</td>
+              </tr>
+              <tr>
+                <td>OIDC</td>
+                <td>ログイン/ユーザー識別</td>
+                <td>エンドユーザー</td>
+                <td>Cognitoや外部IdPが採用</td>
+              </tr>
+              <tr>
+                <td>SAML</td>
+                <td>企業SSO/フェデレーション</td>
+                <td>社員</td>
+                <td>Identity CenterやIAMフェデレーションで活用</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="patterns">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Patterns</div>
+          <h2>実務ではどう組み合わせるか。</h2>
+        </div>
+        <div class="section-copy">
+          ここが一番大事。理屈だけでなく、「誰向けのシステムか」で部品の選び方が変わる。
+        </div>
+      </div>
+      <div class="cards">
+        <article class="panel card wide">
+          <h3>① 社員が複数AWSアカウントへ入る</h3>
+          <p><strong>推奨構成</strong>: 外部IdP（Entra ID / Okta） ↔ IAM Identity Center ↔ Permission Set ↔ 各AWSアカウントのRole</p>
+          <ul>
+            <li>社員はSSOポータルからログイン</li>
+            <li>AWS Organizations配下の複数アカウントへ一元付与</li>
+            <li>権限設計は job function ごとに Permission Set 化</li>
+            <li>SCPで全体ガードレールを敷く</li>
+          </ul>
+        </article>
+        <article class="panel card wide">
+          <h3>② 顧客がWebアプリにログインする</h3>
+          <p><strong>推奨構成</strong>: Cognito User Pool ↔ アプリ ↔ API Gateway / ALB / バックエンド</p>
+          <ul>
+            <li>ユーザー登録、ログイン、MFA、パスワードリセットをCognitoに寄せる</li>
+            <li>アプリは OIDC / OAuth 2.0 でトークンを取得</li>
+            <li>API側は JWT authorizer / Cognito authorizer で検証</li>
+          </ul>
+        </article>
+        <article class="panel card wide">
+          <h3>③ 顧客アプリからS3等へ直接アクセスさせたい</h3>
+          <p><strong>推奨構成</strong>: Cognito User Pool or 外部IdP → Cognito Identity Pool → STS → 一時AWSクレデンシャル</p>
+          <ul>
+            <li>「ログイン」はUser Pool、「AWS資格情報払い出し」はIdentity Poolで役割分担</li>
+            <li>未ログインの匿名ゲストにも限定権限を配る設計が可能</li>
+          </ul>
+        </article>
+        <article class="panel card wide">
+          <h3>④ GitHub Actions からAWSへ安全にデプロイ</h3>
+          <p><strong>推奨構成</strong>: GitHub OIDC → IAM OIDC Provider → AssumeRoleWithWebIdentity → STS一時権限</p>
+          <ul>
+            <li>長期AWS Access KeyをGitHub Secretsに置かなくてよい</li>
+            <li>sub / aud 条件で repository・branch・environment を厳密制限</li>
+          </ul>
+        </article>
+        <article class="panel card wide">
+          <h3>⑤ B2B SaaSで企業のIdPと連携して社員ログインさせたい</h3>
+          <p><strong>推奨構成</strong>: 顧客企業IdP（SAML or OIDC） ↔ Cognito User Pool（federation） ↔ アプリ</p>
+          <ul>
+            <li>自社で認証情報を持たず、相手企業のEntra ID/Oktaを信頼</li>
+            <li>アプリ側では最終的に自分のUser Poolトークンで統一処理しやすい</li>
+          </ul>
+        </article>
+        <article class="panel card wide">
+          <h3>⑥ AWSサービス間・EC2/Lambda/ECS の権限</h3>
+          <p><strong>推奨構成</strong>: IAM Role を各実行環境に付与</p>
+          <ul>
+            <li>EC2 Instance Profile、Lambda Execution Role、ECS Task Role を使う</li>
+            <li>Access Key直書きは避ける</li>
+            <li>最小権限、短命資格情報、CloudTrail監査が基本</li>
+          </ul>
+        </article>
+        <article class="panel card wide">
+          <h3>⑦ APIを保護したい</h3>
+          <p><strong>推奨構成</strong>: Cognito / 外部OIDC の JWT を API Gateway Authorizer や ALB 認証機能で検証</p>
+          <ul>
+            <li>フロントはOIDCでログインし Access Token を取得</li>
+            <li>API Gateway は JWT authorizer / Cognito authorizer を利用</li>
+            <li>ALB でも authenticate-oidc / authenticate-cognito が使える</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Design Rules</div>
+          <h2>実務でよくある勘違い。</h2>
+        </div>
+        <div class="section-copy">このへんを踏み外すと、設計が危うくなる。</div>
+      </div>
+      <div class="cards">
+        <article class="panel card">
+          <h3>OAuth = ログイン、ではない</h3>
+          <p>OAuth 2.0 は認可。ログインまで含めたいなら OIDC を見る。</p>
+        </article>
+        <article class="panel card">
+          <h3>ID Token でAPI認可しない</h3>
+          <p>ID Token は「誰か」の情報。API認可は Access Token やIAM側で判定する。</p>
+        </article>
+        <article class="panel card">
+          <h3>IAM User を増やしすぎない</h3>
+          <p>人も機械も、長期キーよりロール + 一時資格情報が原則。</p>
+        </article>
+        <article class="panel card">
+          <h3>Cognito と Identity Center を混同しない</h3>
+          <p>ざっくり、顧客向けは Cognito、社員向けは Identity Center。</p>
+        </article>
+        <article class="panel card">
+          <h3>SCP は許可付与ではない</h3>
+          <p>SCPは上限枠。IAMポリシーで許可されていても、SCPで止まる。</p>
+        </article>
+        <article class="panel card">
+          <h3>フェデレーション後もIAM設計は必要</h3>
+          <p>外部IdPで本人確認できても、AWS内で何を許可するかは別問題。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="terms">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Glossary</div>
+          <h2>関連キーワード早見表。</h2>
+        </div>
+        <div class="section-copy">全部を暗記する必要はない。どの層の言葉かだけ分かれば強い。</div>
+      </div>
+      <div class="panel card full">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>キーワード</th><th>ひとことで</th><th>どの層？</th></tr></thead>
+            <tbody>
+              <tr><td>Authentication</td><td>本人確認</td><td>認証</td></tr>
+              <tr><td>Authorization</td><td>許可判定</td><td>認可</td></tr>
+              <tr><td>SSO</td><td>一度のログインで複数利用</td><td>体験/運用</td></tr>
+              <tr><td>IdP</td><td>認証を行う主体</td><td>認証</td></tr>
+              <tr><td>SP / Client</td><td>ログインを利用する側</td><td>アプリ</td></tr>
+              <tr><td>OAuth 2.0</td><td>限定アクセスを委譲する規格</td><td>認可</td></tr>
+              <tr><td>OIDC</td><td>OAuthの上に載る認証レイヤー</td><td>認証</td></tr>
+              <tr><td>SAML</td><td>企業SSOで多い古参標準</td><td>フェデレーション</td></tr>
+              <tr><td>Federation</td><td>外部認証基盤を信頼して連携</td><td>橋渡し</td></tr>
+              <tr><td>JWT</td><td>トークンの形式</td><td>トークン</td></tr>
+              <tr><td>Claim</td><td>トークン内の属性情報</td><td>トークン</td></tr>
+              <tr><td>Scope</td><td>要求/付与する権限範囲</td><td>トークン</td></tr>
+              <tr><td>STS</td><td>AWS一時資格情報の発行</td><td>AWS橋渡し</td></tr>
+              <tr><td>AssumeRole</td><td>ロールを引き受ける</td><td>AWS認可</td></tr>
+              <tr><td>AssumeRoleWithSAML</td><td>SAML経由でAWSロール取得</td><td>AWS橋渡し</td></tr>
+              <tr><td>AssumeRoleWithWebIdentity</td><td>OIDC/JWT経由でAWSロール取得</td><td>AWS橋渡し</td></tr>
+              <tr><td>Permission Set</td><td>Identity Centerで配る権限セット</td><td>AWS運用</td></tr>
+              <tr><td>SCP</td><td>Organizations配下の上限ガード</td><td>AWS統制</td></tr>
+              <tr><td>Permission Boundary</td><td>IAM主体の上限ガード</td><td>AWS統制</td></tr>
+              <tr><td>ABAC</td><td>属性ベースアクセス制御</td><td>AWS認可</td></tr>
+              <tr><td>RBAC</td><td>役割ベースアクセス制御</td><td>AWS認可</td></tr>
+              <tr><td>MFA</td><td>多要素認証</td><td>認証強化</td></tr>
+              <tr><td>PKCE</td><td>Code Flow強化</td><td>OAuthセキュリティ</td></tr>
+              <tr><td>JWK / JWKS</td><td>JWT検証用公開鍵</td><td>トークン検証</td></tr>
+              <tr><td>Workforce Identity</td><td>社員・委託先などの組織内利用者</td><td>利用者分類</td></tr>
+              <tr><td>Customer Identity / CIAM</td><td>顧客・会員向けID管理</td><td>利用者分類</td></tr>
+              <tr><td>Workload Identity</td><td>人ではなくアプリやCI/CDの身元</td><td>利用者分類</td></tr>
+              <tr><td>API Gateway Authorizer</td><td>API入口でJWT等を検証</td><td>AWSアプリ保護</td></tr>
+              <tr><td>ALB authenticate-oidc / cognito</td><td>ALBレイヤーで認証を肩代わり</td><td>AWSアプリ保護</td></tr>
+              <tr><td>CloudTrail</td><td>誰が何をしたかの監査ログ</td><td>監査</td></tr>
+              <tr><td>Cedar</td><td>Verified Permissions のポリシー言語</td><td>アプリ内認可</td></tr>
+              <tr><td>Roles Anywhere</td><td>AWS外ワークロードへ一時認証情報</td><td>外部ワークロード</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Summary</div>
+          <h2>迷ったら、この判断基準。</h2>
+        </div>
+        <div class="section-copy">サービス選定を短く言うとこうなる。</div>
+      </div>
+      <div class="cards">
+        <article class="panel card">
+          <h3>社員のAWSアクセス</h3>
+          <p><strong>IAM Identity Center</strong> を第一候補にする。</p>
+        </article>
+        <article class="panel card">
+          <h3>顧客のアプリログイン</h3>
+          <p><strong>Cognito User Pools</strong> を第一候補にする。</p>
+        </article>
+        <article class="panel card">
+          <h3>外部CI/CDや外部IdPからAWS権限取得</h3>
+          <p><strong>OIDC/SAML federation + STS + IAM Role</strong>。</p>
+        </article>
+        <article class="panel card">
+          <h3>権限の本体</h3>
+          <p>最後は常に <strong>IAM</strong> で絞る。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="refs">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">References</div>
+          <h2>出典</h2>
+        </div>
+        <div class="section-copy">このページは以下の一次情報をもとに整理した。説明のため表現を簡略化している部分はあるが、設計判断は一次情報ベースで読めるようにしている。</div>
+      </div>
+      <div class="panel card full">
+        <ol class="refs">
+          <li>AWS IAM Identity Center User Guide, “What is IAM Identity Center?”<br><a href="https://docs.aws.amazon.com/singlesignon/latest/userguide/what-is.html">https://docs.aws.amazon.com/singlesignon/latest/userguide/what-is.html</a></li>
+          <li>Amazon Cognito Developer Guide, “What is Amazon Cognito?”<br><a href="https://docs.aws.amazon.com/cognito/latest/developerguide/what-is-amazon-cognito.html">https://docs.aws.amazon.com/cognito/latest/developerguide/what-is-amazon-cognito.html</a></li>
+          <li>AWS IAM User Guide, “OIDC federation”<br><a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_oidc.html">https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_oidc.html</a></li>
+          <li>IETF RFC 6749, “The OAuth 2.0 Authorization Framework”<br><a href="https://datatracker.ietf.org/doc/html/rfc6749">https://datatracker.ietf.org/doc/html/rfc6749</a></li>
+          <li>OpenID Foundation, “OpenID Connect Core 1.0”<br><a href="https://openid.net/specs/openid-connect-core-1_0.html">https://openid.net/specs/openid-connect-core-1_0.html</a></li>
+          <li>AWS IAM User Guide, IAM / temporary security credentials / federation 系ドキュメント全般<br><a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/introduction.html">https://docs.aws.amazon.com/IAM/latest/UserGuide/introduction.html</a></li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    作成物: AWS認証・認可の基礎〜実務ガイド / 静的HTML 1ページ構成
+  </footer>
+</body>
+</html>
